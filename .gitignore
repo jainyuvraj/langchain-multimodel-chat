@@ -1,0 +1,33 @@
+# Security: Ignore environment files containing secret API keys
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python Virtual Environments & Cache
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Frontend Node modules & build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# IDE / OS junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Database files
+*.db
+*.sqlite3
+
+# Logs
+*.log
