@@ -30,10 +30,9 @@ export function AuthProvider({ children }) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // 2. If token exists, verify with backend /api/auth/me
+      // 2. If a saved token exists, attempt verification
       if (effectiveToken) {
         try {
-          // Explicitly send Authorization header
           const res = await fetch(`${API_BASE_URL}/auth/me`, {
             headers: {
               'Content-Type': 'application/json',
@@ -45,22 +44,32 @@ export function AuthProvider({ children }) {
             setUser(userData);
             setToken(effectiveToken);
             return;
+          } else if (res.status === 401 || res.status === 403) {
+            // Token is expired/invalid -> Clear it
+            console.warn('Auth token expired or invalid.');
+            localStorage.removeItem('auth_token');
+            setToken(null);
           } else {
-            console.warn('Auth token verification returned non-OK status:', res.status);
+            // Server error or warming up (500, 502, 503) -> DO NOT erase saved token!
+            console.warn('Backend server returned temporary error status:', res.status);
+            setToken(effectiveToken);
+            return;
           }
         } catch (e) {
-          console.error('Failed to verify token with /api/auth/me:', e);
+          // Network error or server cold start -> Preserve saved token!
+          console.warn('Network error verifying token, retaining saved token:', e);
+          setToken(effectiveToken);
+          return;
         }
       }
 
-      // Guest Login Fallback
+      // 3. Only fallback to Guest Login if NO user token exists
       try {
         const res = await guestLogin('Guest Developer');
         localStorage.setItem('auth_token', res.access_token);
         setToken(res.access_token);
         setUser(res.user);
       } catch (err) {
-        console.warn('Backend offline, using default offline guest session.');
         setUser(DEFAULT_GUEST_USER);
       }
     };
