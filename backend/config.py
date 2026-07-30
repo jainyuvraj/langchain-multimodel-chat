@@ -5,12 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     APP_NAME: str = "PolyModel AI - Multi-Model Vector Chatbot"
     DEBUG: bool = True
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:5173",  # Vite Dev Server
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-    ]
+    CORS_ORIGINS: List[str] = ["*"]
     
     # Provider System API Keys
     GOOGLE_API_KEY: Optional[str] = None

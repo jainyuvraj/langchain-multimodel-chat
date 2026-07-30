@@ -3,7 +3,11 @@
  * Handles SSE streaming, JWT authentication, and Chat Session persistence.
  */
 
-const API_BASE_URL = '/api';
+// Dynamically use live Render backend URL in production, or local /api proxy in development
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.MODE === 'production' 
+    ? 'https://langchain-multimodel-chat.onrender.com/api' 
+    : '/api');
 
 function getAuthHeaders() {
   const token = localStorage.getItem('auth_token');
