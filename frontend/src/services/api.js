@@ -4,7 +4,7 @@
  */
 
 // Dynamically use live Render backend URL in production, or local /api proxy in development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
   (import.meta.env.MODE === 'production' 
     ? 'https://langchain-multimodel-chat.onrender.com/api' 
     : '/api');

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, UserCheck, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../services/api';
 
 export function AuthModal({ isOpen, onClose }) {
   const { handleGuestLogin } = useAuth();
@@ -17,7 +18,7 @@ export function AuthModal({ isOpen, onClose }) {
   const handleOAuthLogin = async (provider) => {
     if (provider === 'Google') {
       try {
-        const res = await fetch('/api/auth/google/url');
+        const res = await fetch(`${API_BASE_URL}/auth/google/url`);
         const data = await res.json();
         if (data.configured && data.url) {
           window.location.href = data.url;
