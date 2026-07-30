@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { guestLogin, fetchMe } from '../services/api';
+import { guestLogin, fetchMe, API_BASE_URL } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -18,23 +18,38 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const initAuth = async () => {
-      // Check for token from OAuth redirect query param
+      // 1. Check for token in URL from Google OAuth redirect
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('token');
+      
+      let effectiveToken = urlToken || localStorage.getItem('auth_token');
+
       if (urlToken) {
         localStorage.setItem('auth_token', urlToken);
         setToken(urlToken);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      const savedToken = localStorage.getItem('auth_token');
-      if (savedToken) {
+      // 2. If token exists, verify with backend /api/auth/me
+      if (effectiveToken) {
         try {
-          const userData = await fetchMe();
-          setUser(userData);
-          return;
+          // Explicitly send Authorization header
+          const res = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${effectiveToken}`
+            }
+          });
+          if (res.ok) {
+            const userData = await res.json();
+            setUser(userData);
+            setToken(effectiveToken);
+            return;
+          } else {
+            console.warn('Auth token verification returned non-OK status:', res.status);
+          }
         } catch (e) {
-          console.warn('Saved auth token invalid, attempting guest login...');
+          console.error('Failed to verify token with /api/auth/me:', e);
         }
       }
 
