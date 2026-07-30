@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     CHROMADB_DIR: str = "./chroma_vector_db"
 
     # JWT Authentication & OAuth Configuration
+    # Frontend & Backend Base URLs for Production OAuth Redirects
+    FRONTEND_URL: str = "https://langchain-multimodel-chat.vercel.app"
+    BACKEND_URL: str = "https://langchain-multimodel-chat.onrender.com"
     SECRET_KEY: str = "polymodel-ai-jwt-secret-key-production-change-me"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 Days

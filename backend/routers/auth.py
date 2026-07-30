@@ -1,6 +1,6 @@
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from backend.db import get_db
@@ -40,18 +40,39 @@ async def get_current_user_profile(current_user: UserDB = Depends(get_current_us
     """Get authenticated user profile."""
     return current_user
 
+def get_google_redirect_uri(request: Request) -> str:
+    """Dynamically determine Google OAuth callback URL based on request environment."""
+    host = request.headers.get("host", "")
+    if "localhost" in host or "127.0.0.1" in host:
+        return "http://localhost:8000/api/auth/google/callback"
+    return f"https://{host}/api/auth/google/callback" if host else f"{settings.BACKEND_URL.rstrip('/')}/api/auth/google/callback"
+
+def get_frontend_redirect_url(request: Request, jwt_token: str) -> str:
+    """Dynamically determine Frontend redirect URL after issuing JWT token."""
+    referer = request.headers.get("referer")
+    origin = request.headers.get("origin")
+    
+    frontend_base = settings.FRONTEND_URL.rstrip('/')
+    if origin and ("vercel.app" in origin or "localhost" in origin):
+        frontend_base = origin.rstrip('/')
+    elif referer and ("vercel.app" in referer or "localhost" in referer):
+        from urllib.parse import urlparse
+        parsed = urlparse(referer)
+        frontend_base = f"{parsed.scheme}://{parsed.netloc}"
+
+    return f"{frontend_base}?token={jwt_token}"
+
 @router.get("/google/url")
-async def get_google_oauth_url():
+async def get_google_oauth_url(request: Request):
     """OAuth Redirect URL for Google Login."""
     if not settings.GOOGLE_CLIENT_ID:
-        # Fallback to dev mode warning if GOOGLE_CLIENT_ID not configured
         return {
             "url": None, 
             "configured": False,
             "message": "Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in server .env file."
         }
     
-    redirect_uri = "http://localhost:8000/api/auth/google/callback"
+    redirect_uri = get_google_redirect_uri(request)
     url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
         f"response_type=code&client_id={settings.GOOGLE_CLIENT_ID}&"
@@ -60,12 +81,12 @@ async def get_google_oauth_url():
     return {"url": url, "configured": True}
 
 @router.get("/google/callback")
-async def google_oauth_callback(code: str = Query(...), db: Session = Depends(get_db)):
+async def google_oauth_callback(request: Request, code: str = Query(...), db: Session = Depends(get_db)):
     """Google OAuth2 Callback Handler."""
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=400, detail="Google OAuth not configured in .env")
 
-    redirect_uri = "http://localhost:8000/api/auth/google/callback"
+    redirect_uri = get_google_redirect_uri(request)
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
@@ -119,5 +140,5 @@ async def google_oauth_callback(code: str = Query(...), db: Session = Depends(ge
 
     # Issue JWT Token and redirect to frontend with token parameter
     jwt_token = create_access_token({"sub": user.id, "email": user.email})
-    frontend_redirect_url = f"http://localhost:5173?token={jwt_token}"
-    return RedirectResponse(url=frontend_redirect_url)
+    target_url = get_frontend_redirect_url(request, jwt_token)
+    return RedirectResponse(url=target_url)
