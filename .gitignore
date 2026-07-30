@@ -25,9 +25,13 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Database files
+# Database & Vector Memory Files (Do not push to Git)
 *.db
 *.sqlite3
+*.bin
+*.parquet
+chroma_vector_db/
+.chroma/
 
 # Logs
 *.log

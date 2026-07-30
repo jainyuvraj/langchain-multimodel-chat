@@ -58,7 +58,7 @@ AVAILABLE_PROVIDERS: List[ProviderModelsSchema] = [
     ),
     ProviderModelsSchema(
         id="groq",
-        name="Groq Free (Llama 3 / DeepSeek / Qwen / Mixtral)",
+        name="Groq Free (Llama 3 / Qwen 3.6 / GPT-OSS)",
         icon="Zap",
         requires_key=True,
         models=[
@@ -69,19 +69,19 @@ AVAILABLE_PROVIDERS: List[ProviderModelsSchema] = [
                 recommended=True,
             ),
             ModelInfoSchema(
-                id="deepseek-r1-distill-llama-70b",
-                name="DeepSeek R1 (70B)",
-                description="State-of-the-art reasoning & logic model distilled by DeepSeek.",
+                id="qwen/qwen3.6-27b",
+                name="Qwen 3.6 27B",
+                description="Alibaba Cloud's latest state-of-the-art open reasoning & code model.",
             ),
             ModelInfoSchema(
-                id="qwen-2.5-32b",
-                name="Qwen 2.5 32B",
-                description="Alibaba Cloud's highly capable coding & math open model.",
+                id="openai/gpt-oss-120b",
+                name="GPT-OSS 120B",
+                description="High-capacity open-weights model by OpenAI.",
             ),
             ModelInfoSchema(
-                id="mixtral-8x7b-32768",
-                name="Mixtral 8x7B",
-                description="Mistral AI's high-efficiency Mixture-of-Experts architecture.",
+                id="llama-3.1-8b-instant",
+                name="Llama 3.1 8B Instant",
+                description="Ultra-fast compact model for instant responses.",
             ),
         ],
     ),
@@ -222,31 +222,77 @@ class LLMService:
             raise ValueError(f"Unsupported LLM provider: '{provider}'")
 
     @classmethod
-    def format_langchain_messages(cls, request: ChatRequestSchema) -> List[BaseMessage]:
-        """Convert payload messages into LangChain message primitives."""
+    def format_langchain_messages(
+        cls, request: ChatRequestSchema, user_id: Optional[str] = None, chat_id: Optional[str] = None
+    ) -> List[BaseMessage]:
+        """
+        Assemble hybrid context:
+        1. Base System Prompt
+        2. Top 5 Semantically Relevant Historical Messages from ChromaDB Vector Memory
+        3. Last 5 Recent Short-Term Messages
+        """
         lc_messages: List[BaseMessage] = []
 
-        if request.system_prompt and request.system_prompt.strip():
-            lc_messages.append(SystemMessage(content=request.system_prompt.strip()))
+        # 1. Base System Prompt
+        system_content = request.system_prompt.strip() if request.system_prompt else "You are a helpful, creative, and precise AI assistant."
 
-        for msg in request.messages:
+        # Extract latest user query text
+        user_query = ""
+        if request.messages:
+            last_msg = request.messages[-1]
+            if last_msg.role == "user":
+                user_query = last_msg.content
+
+        # 2. Vector Memory Retrieval (Top 5 Semantically Relevant Matches)
+        vector_context_str = ""
+        if user_id and user_query:
+            from backend.vector_service import VectorMemoryService
+            top_k_relevant = VectorMemoryService.get_top_k_relevant_context(
+                user_id=user_id, 
+                chat_id=chat_id, 
+                query_text=user_query, 
+                top_k=5, 
+                enable_inter_chat=request.enable_inter_chat_memory
+            )
+            if top_k_relevant:
+                context_blocks = [
+                    f"- [From Thread '{item.get('title', 'Chat Thread')}'] [{item['role'].upper()}]: {item['content']}"
+                    for item in top_k_relevant
+                ]
+                memory_type = "ALL USER THREADS" if request.enable_inter_chat_memory else "CURRENT THREAD ONLY"
+                vector_context_str = (
+                    f"\n\n📚 [VECTOR SEMANTIC MEMORY ({memory_type}) - Top 5 Relevant Past Turns]:\n"
+                    + "\n".join(context_blocks)
+                    + "\n(Use this vector context to recall relevant details if applicable)."
+                )
+        print(vector_context_str, "yuvraj")
+
+        lc_messages.append(SystemMessage(content=system_content + vector_context_str))
+
+        # 3. Short-Term Recent Messages (Last 5 Messages)
+        # Exclude the very last user query if we append it separately, or include last 5 total
+        recent_messages = request.messages[-5:] if len(request.messages) > 5 else request.messages
+
+        for msg in recent_messages:
             role = msg.role.lower()
             content = msg.content
             if role == "user":
                 lc_messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 lc_messages.append(AIMessage(content=content))
-            elif role == "system" and not lc_messages:
-                lc_messages.append(SystemMessage(content=content))
+            elif role == "system" and len(lc_messages) == 1:
+                pass  # Avoid duplicate system message
 
         return lc_messages
 
     @classmethod
-    async def stream_chat_tokens(cls, request: ChatRequestSchema) -> AsyncGenerator[str, None]:
+    async def stream_chat_tokens(
+        cls, request: ChatRequestSchema, user_id: Optional[str] = None, chat_id: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
         """Async generator streaming token deltas from LangChain chat models."""
         try:
             model = cls.get_chat_model(request)
-            lc_messages = cls.format_langchain_messages(request)
+            lc_messages = cls.format_langchain_messages(request, user_id=user_id, chat_id=chat_id)
 
             async for chunk in model.astream(lc_messages):
                 content = getattr(chunk, "content", "")

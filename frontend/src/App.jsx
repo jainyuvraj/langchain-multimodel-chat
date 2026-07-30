@@ -1,11 +1,15 @@
 import React from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { useChat } from './hooks/useChat';
 import { Sidebar } from './components/Sidebar';
+import { ChatHistorySidebar } from './components/ChatHistorySidebar';
 import { Header } from './components/Header';
 import { ChatWindow } from './components/ChatWindow';
 import { ChatInput } from './components/ChatInput';
+import { AuthModal } from './components/AuthModal';
 
-export default function App() {
+function MainApp() {
+  const { isAuthModalOpen, setIsAuthModalOpen } = useAuth();
   const {
     providers,
     activeProvider,
@@ -17,11 +21,16 @@ export default function App() {
     setTemperature,
     maxTokens,
     setMaxTokens,
+    enableInterChatMemory,
+    setEnableInterChatMemory,
+    sessions,
+    activeChatId,
     messages,
     isStreaming,
-    apiKeys,
     handleProviderChange,
-    handleApiKeyChange,
+    selectChat,
+    handleNewChat,
+    handleDeleteChat,
     sendMessage,
     stopStreaming,
     clearChat,
@@ -29,7 +38,16 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Sidebar Controls */}
+      {/* Saved Chat Threads Sidebar */}
+      <ChatHistorySidebar
+        sessions={sessions}
+        activeChatId={activeChatId}
+        onSelectChat={selectChat}
+        onNewChat={handleNewChat}
+        onDeleteChat={handleDeleteChat}
+      />
+
+      {/* Model Controls Sidebar */}
       <Sidebar
         providers={providers}
         activeProvider={activeProvider}
@@ -42,6 +60,8 @@ export default function App() {
         onTemperatureChange={setTemperature}
         maxTokens={maxTokens}
         onMaxTokensChange={setMaxTokens}
+        enableInterChatMemory={enableInterChatMemory}
+        onEnableInterChatMemoryChange={setEnableInterChatMemory}
         onClearChat={clearChat}
       />
 
@@ -55,6 +75,20 @@ export default function App() {
           onStopStreaming={stopStreaming}
         />
       </main>
+
+      {/* User Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }

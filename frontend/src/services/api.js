@@ -1,53 +1,113 @@
 /**
  * Modular API Service Layer for LangChain Multi-Model Chatbot.
- * Modularized for future Database & OAuth token additions.
+ * Handles SSE streaming, JWT authentication, and Chat Session persistence.
  */
 
 const API_BASE_URL = '/api';
 
+function getAuthHeaders() {
+  const token = localStorage.getItem('auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 /**
- * Fetch available model providers and sub-models from backend.
+ * Guest Login API
+ */
+export async function guestLogin(name = 'Guest Developer') {
+  const res = await fetch(`${API_BASE_URL}/auth/guest-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error('Guest login failed');
+  return await res.json();
+}
+
+/**
+ * Fetch current authenticated user profile
+ */
+export async function fetchMe() {
+  const res = await fetch(`${API_BASE_URL}/auth/me`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch user profile');
+  return await res.json();
+}
+
+/**
+ * Fetch list of user chat sessions (chatID threads)
+ */
+export async function fetchSessions() {
+  const res = await fetch(`${API_BASE_URL}/sessions`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch sessions');
+  return await res.json();
+}
+
+/**
+ * Create a new chat session
+ */
+export async function createSession(title = 'New Conversation', provider = 'google', model = 'gemini-flash-latest') {
+  const res = await fetch(`${API_BASE_URL}/sessions`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ title, provider, model }),
+  });
+  if (!res.ok) throw new Error('Failed to create session');
+  return await res.json();
+}
+
+/**
+ * Fetch message history for a specific chatID
+ */
+export async function fetchSessionMessages(chatId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${chatId}/messages`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch session messages');
+  return await res.json();
+}
+
+/**
+ * Delete a chat session
+ */
+export async function deleteSession(chatId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${chatId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete session');
+  return await res.json();
+}
+
+/**
+ * Fetch available model providers and sub-models from backend
  */
 export async function fetchProviders() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/models/providers`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch providers (Status ${response.status})`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('API Error in fetchProviders:', error);
-    throw error;
-  }
+  const response = await fetch(`${API_BASE_URL}/models/providers`);
+  if (!response.ok) throw new Error('Failed to fetch providers');
+  return await response.json();
 }
 
 /**
  * Stream chat completions using Server-Sent Events (SSE).
- * @param {Object} payload Chat request parameters
- * @param {Function} onToken Callback for each received stream token
- * @param {Function} onError Callback for errors
- * @param {Function} onComplete Callback when stream finishes
- * @param {AbortSignal} signal AbortController signal
  */
 export async function streamChatCompletion(payload, onToken, onError, onComplete, signal) {
   try {
-    // Modular Auth Header Hook (for future OAuth JWT tokens)
-    const authToken = localStorage.getItem('auth_token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    };
-
     const response = await fetch(`${API_BASE_URL}/chat/stream`, {
       method: 'POST',
-      headers,
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload),
       signal,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Server returned error status ${response.status}: ${errorText}`);
+      throw new Error(`Server returned error ${response.status}: ${errorText}`);
     }
 
     const reader = response.body.getReader();
@@ -60,7 +120,7 @@ export async function streamChatCompletion(payload, onToken, onError, onComplete
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete trailing line in buffer
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -84,11 +144,11 @@ export async function streamChatCompletion(payload, onToken, onError, onComplete
               tokenStr = parsed.token.text || parsed.token.content || JSON.stringify(parsed.token);
             }
             if (tokenStr) {
-              onToken(tokenStr);
+              onToken(tokenStr, parsed.chat_id);
             }
           }
         } catch (e) {
-          console.warn('Failed to parse SSE JSON line:', dataStr);
+          console.warn('Failed to parse SSE JSON:', dataStr);
         }
       }
     }

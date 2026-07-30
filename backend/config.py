@@ -3,7 +3,7 @@ from typing import List, Optional
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Multi-Model LangChain Chatbot"
+    APP_NAME: str = "PolyModel AI - Multi-Model Vector Chatbot"
     DEBUG: bool = True
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",  # Vite Dev Server
@@ -12,20 +12,28 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
     ]
     
-    # Provider Default API Keys (loaded from .env if present)
+    # Provider System API Keys
     GOOGLE_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
 
-    # Modular Placeholders for Future Extensions
-    # Database
-    DATABASE_URL: Optional[str] = "sqlite:///./chat_history.db"
+    # Database Configuration (SQLite + SQLAlchemy)
+    DATABASE_URL: str = "sqlite:///./chat_database.db"
     
-    # OAuth / Auth Configuration
-    SECRET_KEY: str = "super-secret-dev-key-change-in-production"
+    # ChromaDB Vector Store Directory
+    CHROMADB_DIR: str = "./chroma_vector_db"
+
+    # JWT Authentication & OAuth Configuration
+    SECRET_KEY: str = "polymodel-ai-jwt-secret-key-production-change-me"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 Days
+
+    # OAuth Client Configurations (Google & GitHub)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GITHUB_CLIENT_ID: Optional[str] = None
+    GITHUB_CLIENT_SECRET: Optional[str] = None
 
     class Config:
         env_file = ".env"

@@ -1,41 +1,102 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchProviders, streamChatCompletion } from '../services/api';
+import { 
+  fetchProviders, streamChatCompletion, 
+  fetchSessions, createSession, deleteSession, fetchSessionMessages 
+} from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful, creative, and precise AI assistant.";
 
 export function useChat() {
+  const { user } = useAuth();
   const [providers, setProviders] = useState([]);
   const [activeProvider, setActiveProvider] = useState('google');
   const [activeModel, setActiveModel] = useState('gemini-flash-latest');
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
+  const [enableInterChatMemory, setEnableInterChatMemory] = useState(false);
+
+  const [sessions, setSessions] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [apiKeys, setApiKeys] = useState(() => {
-    const saved = localStorage.getItem('chat_api_keys');
-    return saved ? JSON.parse(saved) : { google: '', openai: '', anthropic: '' };
-  });
 
   const abortControllerRef = useRef(null);
 
-  // Fetch providers on initial mount
+  // Fetch providers and user sessions
   useEffect(() => {
-    fetchProviders()
-      .then((data) => {
-        setProviders(data);
-      })
-      .catch((err) => {
-        console.warn('Backend not available yet, using fallback provider list.');
-      });
+    fetchProviders().then(setProviders).catch(() => {});
   }, []);
 
-  // Save API keys to localStorage
   useEffect(() => {
-    localStorage.setItem('chat_api_keys', JSON.stringify(apiKeys));
-  }, [apiKeys]);
+    if (user) {
+      loadSessions();
+    }
+  }, [user]);
 
-  // Update active model when provider changes
+  const loadSessions = async () => {
+    try {
+      const list = await fetchSessions();
+      if (Array.isArray(list)) {
+        setSessions(list);
+        if (list.length > 0 && !activeChatId) {
+          selectChat(list[0].id);
+        }
+      } else {
+        setSessions([]);
+      }
+    } catch (e) {
+      console.warn('Failed to load user chat sessions:', e);
+      setSessions([]);
+    }
+  };
+
+  const selectChat = async (chatId) => {
+    if (!chatId) return;
+    setActiveChatId(chatId);
+    try {
+      const history = await fetchSessionMessages(chatId);
+      if (Array.isArray(history)) {
+        setMessages(history.map(m => ({ role: m.role, content: m.content })));
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.warn(`Failed to fetch messages for chat ${chatId}:`, e);
+      setMessages([]);
+    }
+  };
+
+  const handleNewChat = async () => {
+    try {
+      const newSession = await createSession('New Conversation', activeProvider, activeModel);
+      setSessions(prev => [newSession, ...prev]);
+      setActiveChatId(newSession.id);
+      setMessages([]);
+    } catch (e) {
+      console.error('Failed to create new chat session:', e);
+    }
+  };
+
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteSession(chatId);
+      const remaining = sessions.filter(s => s.id !== chatId);
+      setSessions(remaining);
+      if (activeChatId === chatId) {
+        if (remaining.length > 0) {
+          selectChat(remaining[0].id);
+        } else {
+          setActiveChatId(null);
+          setMessages([]);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to delete chat session:', e);
+    }
+  };
+
   const handleProviderChange = (providerId) => {
     setActiveProvider(providerId);
     const providerObj = providers.find((p) => p.id === providerId);
@@ -43,13 +104,10 @@ export function useChat() {
       setActiveModel(providerObj.models[0].id);
     } else {
       if (providerId === 'google') setActiveModel('gemini-flash-latest');
+      else if (providerId === 'groq') setActiveModel('llama-3.3-70b-versatile');
       else if (providerId === 'openai') setActiveModel('gpt-4o');
       else if (providerId === 'anthropic') setActiveModel('claude-3-5-sonnet-20240620');
     }
-  };
-
-  const handleApiKeyChange = (provider, key) => {
-    setApiKeys((prev) => ({ ...prev, [provider]: key }));
   };
 
   const clearChat = () => {
@@ -73,8 +131,12 @@ export function useChat() {
     const userMessage = { role: 'user', content: userText.trim() };
     const updatedMessages = [...messages, userMessage];
 
-    // Placeholder for streaming assistant response
-    const assistantMessage = { role: 'assistant', content: '', provider: activeProvider, model: activeModel };
+    const assistantMessage = { 
+      role: 'assistant', 
+      content: '', 
+      provider: activeProvider, 
+      model: activeModel 
+    };
     
     setMessages([...updatedMessages, assistantMessage]);
     setIsStreaming(true);
@@ -83,20 +145,25 @@ export function useChat() {
     abortControllerRef.current = abortController;
 
     const payload = {
+      chat_id: activeChatId,
       provider: activeProvider,
       model: activeModel,
       messages: updatedMessages,
       system_prompt: systemPrompt,
       temperature,
       max_tokens: maxTokens,
-      api_keys: apiKeys,
+      enable_inter_chat_memory: enableInterChatMemory,
     };
 
     let accumulatedText = '';
 
     await streamChatCompletion(
       payload,
-      (token) => {
+      (token, chatIdFromBackend) => {
+        if (chatIdFromBackend && chatIdFromBackend !== activeChatId) {
+          setActiveChatId(chatIdFromBackend);
+        }
+
         accumulatedText += token;
         setMessages((prev) => {
           const next = [...prev];
@@ -124,6 +191,7 @@ export function useChat() {
       },
       () => {
         setIsStreaming(false);
+        loadSessions(); // Refresh session titles/timestamps
       },
       abortController.signal
     );
@@ -140,11 +208,16 @@ export function useChat() {
     setTemperature,
     maxTokens,
     setMaxTokens,
+    enableInterChatMemory,
+    setEnableInterChatMemory,
+    sessions,
+    activeChatId,
     messages,
     isStreaming,
-    apiKeys,
     handleProviderChange,
-    handleApiKeyChange,
+    selectChat,
+    handleNewChat,
+    handleDeleteChat,
     sendMessage,
     stopStreaming,
     clearChat,

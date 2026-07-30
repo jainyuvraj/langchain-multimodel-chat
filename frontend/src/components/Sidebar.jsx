@@ -16,6 +16,8 @@ export function Sidebar({
   onTemperatureChange,
   maxTokens,
   onMaxTokensChange,
+  enableInterChatMemory,
+  onEnableInterChatMemoryChange,
   onClearChat,
 }) {
   // Fallback models if providers api is loading
@@ -132,6 +134,26 @@ export function Sidebar({
             value={maxTokens}
             onChange={(e) => onMaxTokensChange(parseInt(e.target.value, 10))}
           />
+
+          {/* Cross-Thread Vector Memory Toggle */}
+          <div style={{ marginTop: '16px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>Cross-Thread Memory</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                  {enableInterChatMemory ? 'ON (All User Threads)' : 'OFF (Current Chat Only)'}
+                </span>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={enableInterChatMemory}
+                  onChange={(e) => onEnableInterChatMemoryChange(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
 
         {/* System Prompt Customizer */}

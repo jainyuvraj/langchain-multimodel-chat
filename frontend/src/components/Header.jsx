@@ -1,5 +1,6 @@
 import React from 'react';
-import { Cpu, ShieldCheck, UserCheck } from 'lucide-react';
+import { Cpu } from 'lucide-react';
+import { UserMenu } from './UserMenu';
 
 export function Header({ activeProvider, activeModel }) {
   const getProviderName = (id) => {
@@ -19,23 +20,14 @@ export function Header({ activeProvider, activeModel }) {
         </div>
       </div>
 
-      {/* Modular Header Action & OAuth Placeholder */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
           <div className="status-indicator" />
-          <span>LangChain Engine Ready</span>
+          <span>Vector Memory & DB Ready</span>
         </div>
 
-        {/* Placeholder OAuth Login Button */}
-        <button 
-          className="btn-secondary" 
-          style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '999px' }}
-          onClick={() => alert("OAuth Integration Placeholder: Google / GitHub Login ready to connect in backend/routers/auth.py")}
-          title="Modular OAuth Integration Hook"
-        >
-          <UserCheck size={14} />
-          <span>Sign In (OAuth Ready)</span>
-        </button>
+        {/* User Authentication & Profile Menu */}
+        <UserMenu />
       </div>
     </header>
   );
