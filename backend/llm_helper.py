@@ -131,6 +131,60 @@ AVAILABLE_PROVIDERS: List[ProviderModelsSchema] = [
 ]
 
 
+class SmartTavilySearchService:
+    @staticmethod
+    def should_trigger_web_search(query: str, user_preference: Optional[bool] = None) -> bool:
+        """Determines if real-time web search is required based on user toggle or smart intent detection."""
+        if user_preference is False:
+            return False
+        if user_preference is True:
+            return True
+        
+        if not query or len(query.strip()) < 3:
+            return False
+
+        realtime_keywords = [
+            "today", "latest", "now", "current", "news", "price", "stock",
+            "who won", "match", "score", "weather", "release", "2026", "2025",
+            "recent", "yesterday", "update", "version", "winner", "result", "trending"
+        ]
+        q_lower = query.lower()
+        return any(kw in q_lower for kw in realtime_keywords)
+
+    @classmethod
+    def execute_search(cls, query: str) -> str:
+        """Execute search via Tavily API and return formatted prompt context."""
+        api_key = settings.TAVILY_API_KEY or os.environ.get("TAVILY_API_KEY")
+        if not api_key:
+            return ""
+
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=api_key)
+            results = client.search(query=query.strip(), max_results=3, search_depth="basic")
+            
+            if not results or "results" not in results:
+                return ""
+
+            snippets = []
+            for idx, res in enumerate(results["results"][:3], 1):
+                title = res.get("title", "Web Page")
+                url = res.get("url", "")
+                content = res.get("content", "")
+                snippets.append(f"[{idx}] '{title}' ({url}):\n{content}")
+
+            if snippets:
+                return (
+                    "\n\n🌐 [LIVE REAL-TIME WEB SEARCH RESULTS (via Tavily)]:\n"
+                    + "\n\n".join(snippets)
+                    + "\n(Use the above up-to-date web search results to answer the user accurately with live real-time information)."
+                )
+            return ""
+        except Exception as e:
+            print(f"[Tavily Search Warning]: {str(e)}")
+            return ""
+
+
 class LLMService:
     """Modular LLM Manager encapsulating LangChain provider integrations."""
 
