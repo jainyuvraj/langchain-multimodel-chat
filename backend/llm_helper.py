@@ -231,17 +231,19 @@ class LLMService:
         2. Top 5 Semantically Relevant Historical Messages from ChromaDB Vector Memory
         3. Last 5 Recent Short-Term Messages
         """
-        lc_messages: List[BaseMessage] = []
-
-        # 1. Base System Prompt
-        system_content = request.system_prompt.strip() if request.system_prompt else "You are a helpful, creative, and precise AI assistant."
-
-        # Extract latest user query text
+        lc_messages = []
+        system_content = request.system_prompt or "You are a helpful, creative, and precise AI assistant."
         user_query = ""
+
         if request.messages:
             last_msg = request.messages[-1]
             if last_msg.role == "user":
                 user_query = last_msg.content
+
+        # 1. Real-Time Web Search Context (Tavily - Smart Intent Activated)
+        web_search_context_str = ""
+        if user_query and SmartTavilySearchService.should_trigger_web_search(user_query, request.enable_web_search):
+            web_search_context_str = SmartTavilySearchService.execute_search(user_query)
 
         # 2. Vector Memory Retrieval (Top 5 Semantically Relevant Matches)
         vector_context_str = ""
@@ -265,9 +267,8 @@ class LLMService:
                     + "\n".join(context_blocks)
                     + "\n(Use this vector context to recall relevant details if applicable)."
                 )
-        print(vector_context_str, "yuvraj")
 
-        lc_messages.append(SystemMessage(content=system_content + vector_context_str))
+        lc_messages.append(SystemMessage(content=system_content + web_search_context_str + vector_context_str))
 
         # 3. Short-Term Recent Messages (Last 5 Messages)
         # Exclude the very last user query if we append it separately, or include last 5 total

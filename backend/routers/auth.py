@@ -1,5 +1,7 @@
 import uuid
 import httpx
+from typing import Optional
+from urllib.parse import quote, unquote, urlparse
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -47,18 +49,40 @@ def get_google_redirect_uri(request: Request) -> str:
         return "http://localhost:8000/api/auth/google/callback"
     return f"https://{host}/api/auth/google/callback" if host else f"{settings.BACKEND_URL.rstrip('/')}/api/auth/google/callback"
 
-def get_frontend_redirect_url(request: Request, jwt_token: str) -> str:
-    """Dynamically determine Frontend redirect URL after issuing JWT token."""
+def get_frontend_base_from_request(request: Request) -> str:
+    """Infer the frontend base URL from request headers while preserving localhost development redirects."""
     referer = request.headers.get("referer")
     origin = request.headers.get("origin")
-    
+    host = request.headers.get("host", "")
+
+    for candidate in [origin, referer]:
+        if not candidate:
+            continue
+        parsed = urlparse(candidate)
+        if parsed.scheme and parsed.netloc:
+            if "localhost" in parsed.netloc or "127.0.0.1" in parsed.netloc or "vercel.app" in parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}".rstrip('/')
+
+    if host and ("localhost" in host or "127.0.0.1" in host):
+        return f"http://{host}".rstrip('/')
+
+    return settings.FRONTEND_URL.rstrip('/')
+
+
+def get_frontend_redirect_url(request: Request, jwt_token: str, state: Optional[str] = None) -> str:
+    """Dynamically determine Frontend redirect URL after issuing JWT token."""
     frontend_base = settings.FRONTEND_URL.rstrip('/')
-    if origin and ("vercel.app" in origin or "localhost" in origin):
-        frontend_base = origin.rstrip('/')
-    elif referer and ("vercel.app" in referer or "localhost" in referer):
-        from urllib.parse import urlparse
-        parsed = urlparse(referer)
-        frontend_base = f"{parsed.scheme}://{parsed.netloc}"
+
+    if state:
+        try:
+            decoded_state = unquote(state)
+            if decoded_state.startswith("http://") or decoded_state.startswith("https://"):
+                frontend_base = decoded_state.rstrip('/')
+        except Exception:
+            pass
+
+    if not state or frontend_base == settings.FRONTEND_URL.rstrip('/'):
+        frontend_base = get_frontend_base_from_request(request)
 
     return f"{frontend_base}?token={jwt_token}"
 
@@ -73,15 +97,18 @@ async def get_google_oauth_url(request: Request):
         }
     
     redirect_uri = get_google_redirect_uri(request)
+    frontend_base = get_frontend_base_from_request(request)
+    state = quote(frontend_base, safe="")
     url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
         f"response_type=code&client_id={settings.GOOGLE_CLIENT_ID}&"
         f"redirect_uri={redirect_uri}&scope=openid%20email%20profile&access_type=offline"
+        f"&state={state}"
     )
     return {"url": url, "configured": True}
 
 @router.get("/google/callback")
-async def google_oauth_callback(request: Request, code: str = Query(...), db: Session = Depends(get_db)):
+async def google_oauth_callback(request: Request, code: str = Query(...), state: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """Google OAuth2 Callback Handler."""
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=400, detail="Google OAuth not configured in .env")
@@ -140,5 +167,5 @@ async def google_oauth_callback(request: Request, code: str = Query(...), db: Se
 
     # Issue JWT Token and redirect to frontend with token parameter
     jwt_token = create_access_token({"sub": user.id, "email": user.email})
-    target_url = get_frontend_redirect_url(request, jwt_token)
+    target_url = get_frontend_redirect_url(request, jwt_token, state)
     return RedirectResponse(url=target_url)

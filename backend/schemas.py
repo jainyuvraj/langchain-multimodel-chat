@@ -23,6 +23,7 @@ class ChatRequestSchema(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(2048, ge=1, le=8192)
     enable_inter_chat_memory: bool = Field(False, description="Toggle between Chat-specific Memory (OFF) and All User Threads Memory (ON)")
+    enable_web_search: Optional[bool] = Field(None, description="Web Search mode: True (Force), False (Disable), None (Smart Auto-Detect)")
     api_keys: Optional[ApiKeysSchema] = None
 
 class ModelInfoSchema(BaseModel):
